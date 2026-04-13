@@ -46,7 +46,7 @@ def random_name():
 
 LOCATION_ID = "aIfbkdsjbDMNd2jXVzkv"
 
-@app.route('/check-card', methods=['GET'])
+@app.route('/strip1', methods=['GET'])
 @rate_limiter(min_interval=3)  # 3 seconds gap between requests
 def check_card():
     try:
@@ -283,5 +283,5 @@ def health():
 if __name__ == '__main__':
     print("🚀 Card Checker API Starting...")
     print("⚠️ Rate Limited: 3 seconds between requests")
-    print("📍 http://localhost:5000/check-card?cc=card|MM|YY|CVC")
+    print("📍 http://localhost:5000/strip1?cc=card|MM|YY|CVC")
     app.run(debug=True, host='0.0.0.0', port=5000)
