@@ -22,7 +22,7 @@ def random_name():
 
 LOCATION_ID = "aIfbkdsjbDMNd2jXVzkv"
 
-@app.route('/check-card', methods=['GET'])
+@app.route('/strip1', methods=['GET'])
 def check_card():
     try:
         card_input = request.args.get('cc')
@@ -222,5 +222,5 @@ def check_card():
 
 if __name__ == '__main__':
     print("🚀 Card Checker API Starting...")
-    print("📍 http://localhost:5000/check-card?cc=card|MM|YY|CVC")
+    print("📍 http://localhost:5000/strip1?cc=card|MM|YY|CVC")
     app.run(debug=True, host='0.0.0.0', port=5000)
